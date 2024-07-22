@@ -1,0 +1,123 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+    <meta charset="UTF-8">
+    <title>Calendário</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        .calendar-card {
+            background-color: white;
+            border-radius: 8px;
+         
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+         
+            padding: 20px;
+            width: 100%;
+            max-width: 800px;
+            box-sizing: border-box;
+        }
+
+        .calendar {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 10px;
+        }
+
+        .calendar-day {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            height: 120px;
+            background-color: #007bff;
+            color: white;
+            border-radius: 4px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .calendar-day.disabled {
+            background-color: #ddd;
+            cursor: not-allowed;
+        }
+
+        .calendar-day.disabled:hover {
+            background-color: #ddd;
+        }
+
+        .calendar-day span {
+            display: block;
+        }
+
+        .calendar-time {
+            font-size: 0.8em;
+            color: #f0f0f0;
+        }
+
+        .navigation-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 600px) {
+            .calendar-card {
+                width: 90%;
+            }
+
+            .calendar-day {
+                height: 100px;
+            }
+        }
+    </style>
+    <script>
+        function navigateToDay(element) {
+            if (!element.classList.contains('disabled')) {
+                var date = element.getAttribute('data-date');
+                window.location.href = '/calendar/day/' + date;
+            }
+        }
+
+        function navigateMonth(offset) {
+            var yearMonth = document.getElementById('yearMonth').value;
+            var [year, month] = yearMonth.split('-');
+            var date = new Date(year, month - 1);
+            date.setMonth(date.getMonth() + offset);
+            var newYear = date.getFullYear();
+            var newMonth = ('0' + (date.getMonth() + 1)).slice(-2);
+            window.location.href = `/calendar/${newYear}-${newMonth}`;
+        }
+    </script>
+</head>
+<body>
+    <span class="calendar-time" th:text="${#temporals.format(day, 'HH:mm')}"></span>
+
+    <div th:text="${#temporals.format(day, 'HH:mm')}"></div>
+    <div class="calendar-card">
+        <div class="navigation-buttons">
+            <button onclick="navigateMonth(-1)">&#8592; Anterior</button>
+            <h2 th:text="${currentMonth}"></h2>
+            <button onclick="navigateMonth(1)">Próximo &#8594;</button>
+        </div>
+        <input type="hidden" id="yearMonth" th:value="${yearMonth}"/>
+        <div class="calendar">
+            <div class="calendar-day" th:each="day : ${days}"
+                 th:classappend="${day.isBefore(T(java.time.LocalDateTime).now())} ? 'disabled' : ''"
+                 th:data-date="${#temporals.format(day, 'yyyy-MM-dd')}"
+                 th:onclick="|navigateToDay(this)|">
+
+                <span th:text="${#temporals.format(day, 'dd')}"></span>
+                <span th:text="${#temporals.format(day, 'EEE')}"></span>
+            </div>
+        </div>
+    </div>
+</body>
+</html>
