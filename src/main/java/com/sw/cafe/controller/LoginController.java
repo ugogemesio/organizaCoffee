@@ -13,7 +13,7 @@ public class LoginController {
 
     @GetMapping("/login")
     public String home() {
-        return "loginForm";
+        return "registraForm";
     }
 
     @GetMapping("/")
