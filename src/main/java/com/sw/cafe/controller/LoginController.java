@@ -16,7 +16,7 @@ public class LoginController {
         return "loginForm";
     }
 
-    @GetMapping("/register")
+    @GetMapping("/")
     public String registra() {
         return "registraForm";
     }
