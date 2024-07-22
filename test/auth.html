@@ -1,0 +1,973 @@
+    <article class="doc">
+    <h1 id="page-title" class="page">Password Storage</h1>
+    <aside class="toc embedded"><div class="toc-menu"><h3>Password Storage</h3><ul><li data-level="1"><a href="#authentication-password-storage-history">Password Storage History</a></li><li data-level="1"><a href="#authentication-password-storage-dpe">DelegatingPasswordEncoder</a></li><li data-level="2"><a href="#authentication-password-storage-dpe-format">Password Storage Format</a></li><li data-level="2"><a href="#authentication-password-storage-dpe-encoding">Password Encoding</a></li><li data-level="2"><a href="#authentication-password-storage-dpe-matching">Password Matching</a></li><li data-level="2"><a href="#authentication-password-storage-dep-getting-started">Getting Started Experience</a></li><li data-level="2"><a href="#authentication-password-storage-boot-cli">Encode with Spring Boot CLI</a></li><li data-level="2"><a href="#authentication-password-storage-dpe-troubleshoot">Troubleshooting</a></li><li data-level="1"><a href="#authentication-password-storage-bcrypt">BCryptPasswordEncoder</a></li><li data-level="1"><a href="#authentication-password-storage-argon2">Argon2PasswordEncoder</a></li><li data-level="1"><a href="#authentication-password-storage-pbkdf2">Pbkdf2PasswordEncoder</a></li><li data-level="1"><a href="#authentication-password-storage-scrypt">SCryptPasswordEncoder</a></li><li data-level="1"><a href="#authentication-password-storage-other">Other PasswordEncoders</a></li><li data-level="1"><a href="#authentication-password-storage-configuration">Password Storage Configuration</a></li><li data-level="1"><a href="#authentication-change-password-configuration">Change Password Configuration</a></li><li data-level="1"><a href="#authentication-compromised-password-check">Compromised Password Checking</a></li></ul></div></aside><div id="preamble">
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>Spring Security’s <code>PasswordEncoder</code> interface is used to perform a one-way transformation of a password to let the password be stored securely.
+    Given <code>PasswordEncoder</code> is a one-way transformation, it is not useful when the password transformation needs to be two-way (such as storing credentials used to authenticate to a database).
+    Typically, <code>PasswordEncoder</code> is used for storing a password that needs to be compared to a user-provided password at the time of authentication.</p>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-history"><a class="anchor" href="#authentication-password-storage-history"></a>Password Storage History</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>Throughout the years, the standard mechanism for storing passwords has evolved.
+    In the beginning, passwords were stored in plaintext.
+    The passwords were assumed to be safe because the data store the passwords were saved in required credentials to access it.
+    However, malicious users were able to find ways to get large “data dumps” of usernames and passwords by using attacks such as SQL Injection.
+    As more and more user credentials became public, security experts realized that we needed to do more to protect users' passwords.</p>
+    </div>
+    <div class="paragraph">
+    <p>Developers were then encouraged to store passwords after running them through a one way hash, such as SHA-256.
+    When a user tried to authenticate, the hashed password would be compared to the hash of the password that they typed.
+    This meant that the system only needed to store the one-way hash of the password.
+    If a breach occurred, only the one-way hashes of the passwords were exposed.
+    Since the hashes were one-way and it was computationally difficult to guess the passwords given the hash, it would not be worth the effort to figure out each password in the system.
+    To defeat this new system, malicious users decided to create lookup tables known as <a href="https://en.wikipedia.org/wiki/Rainbow_table" class="external" target="_blank">Rainbow Tables</a>.
+    Rather than doing the work of guessing each password every time, they computed the password once and stored it in a lookup table.</p>
+    </div>
+    <div class="paragraph">
+    <p>To mitigate the effectiveness of Rainbow Tables, developers were encouraged to use salted passwords.
+    Instead of using just the password as input to the hash function, random bytes (known as salt) would be generated for every user’s password.
+    The salt and the user’s password would be run through the hash function to produce a unique hash.
+    The salt would be stored alongside the user’s password in clear text.
+    Then when a user tried to authenticate, the hashed password would be compared to the hash of the stored salt and the password that they typed.
+    The unique salt meant that Rainbow Tables were no longer effective because the hash was different for every salt and password combination.</p>
+    </div>
+    <div class="paragraph">
+    <p>In modern times, we realize that cryptographic hashes (like SHA-256) are no longer secure.
+    The reason is that with modern hardware we can perform billions of hash calculations a second.
+    This means that we can crack each password individually with ease.</p>
+    </div>
+    <div class="paragraph">
+    <p>Developers are now encouraged to leverage adaptive one-way functions to store a password.
+    Validation of passwords with adaptive one-way functions are intentionally resource-intensive (they intentionally use a lot of CPU, memory, or other resources).
+    An adaptive one-way function allows configuring a “work factor” that can grow as hardware gets better.
+    We recommend that the “work factor” be tuned to take about one second to verify a password on your system.
+    This trade off is to make it difficult for attackers to crack the password, but not so costly that it puts excessive burden on your own system or irritates users.
+    Spring Security has attempted to provide a good starting point for the “work factor”, but we encourage users to customize the “work factor” for their own system, since the performance varies drastically from system to system.
+    Examples of adaptive one-way functions that should be used include <a href="#authentication-password-storage-bcrypt">bcrypt</a>, <a href="#authentication-password-storage-pbkdf2">PBKDF2</a>, <a href="#authentication-password-storage-scrypt">scrypt</a>, and <a href="#authentication-password-storage-argon2">argon2</a>.</p>
+    </div>
+    <div class="paragraph">
+    <p>Because adaptive one-way functions are intentionally resource intensive, validating a username and password for every request can significantly degrade the performance of an application.
+    There is nothing Spring Security (or any other library) can do to speed up the validation of the password, since security is gained by making the validation resource intensive.
+    Users are encouraged to exchange the long term credentials (that is, username and password) for a short term credential (such as a session, and OAuth Token, and so on).
+    The short term credential can be validated quickly without any loss in security.</p>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-dpe"><a class="anchor" href="#authentication-password-storage-dpe"></a>DelegatingPasswordEncoder</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>Prior to Spring Security 5.0, the default <code>PasswordEncoder</code> was <code>NoOpPasswordEncoder</code>, which required plain-text passwords.
+    Based on the <a href="#authentication-password-storage-history">Password History</a> section, you might expect that the default <code>PasswordEncoder</code> would now be something like <code>BCryptPasswordEncoder</code>.
+    However, this ignores three real world problems:</p>
+    </div>
+    <div class="ulist">
+    <ul>
+    <li>
+    <p>Many applications use old password encodings that cannot easily migrate.</p>
+    </li>
+    <li>
+    <p>The best practice for password storage will change again.</p>
+    </li>
+    <li>
+    <p>As a framework, Spring Security cannot make breaking changes frequently.</p>
+    </li>
+    </ul>
+    </div>
+    <div class="paragraph">
+    <p>Instead Spring Security introduces <code>DelegatingPasswordEncoder</code>, which solves all of the problems by:</p>
+    </div>
+    <div class="ulist">
+    <ul>
+    <li>
+    <p>Ensuring that passwords are encoded by using the current password storage recommendations</p>
+    </li>
+    <li>
+    <p>Allowing for validating passwords in modern and legacy formats</p>
+    </li>
+    <li>
+    <p>Allowing for upgrading the encoding in the future</p>
+    </li>
+    </ul>
+    </div>
+    <div class="paragraph">
+    <p>You can easily construct an instance of <code>DelegatingPasswordEncoder</code> by using <code>PasswordEncoderFactories</code>:</p>
+    </div>
+    <div id="_tabs_1" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">Create Default DelegatingPasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_1_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_1_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_1_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_1_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_1_java--panel" class="tabpanel" aria-labelledby="_tabs_1_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">PasswordEncoder passwordEncoder =
+        PasswordEncoderFactories.createDelegatingPasswordEncoder();</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_1_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_1_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-keyword">val</span> passwordEncoder: PasswordEncoder = PasswordEncoderFactories.createDelegatingPasswordEncoder()</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>Alternatively, you can create your own custom instance:</p>
+    </div>
+    <div id="_tabs_2" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">Create Custom DelegatingPasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_2_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_2_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_2_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_2_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_2_java--panel" class="tabpanel" aria-labelledby="_tabs_2_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">String idForEncode = <span class="hljs-string">"bcrypt"</span>;
+    Map encoders = <span class="hljs-keyword">new</span> HashMap&lt;&gt;();
+    encoders.put(idForEncode, <span class="hljs-keyword">new</span> BCryptPasswordEncoder());
+    encoders.put(<span class="hljs-string">"noop"</span>, NoOpPasswordEncoder.getInstance());
+    encoders.put(<span class="hljs-string">"pbkdf2"</span>, Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_5());
+    encoders.put(<span class="hljs-string">"pbkdf2@SpringSecurity_v5_8"</span>, Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8());
+    encoders.put(<span class="hljs-string">"scrypt"</span>, SCryptPasswordEncoder.defaultsForSpringSecurity_v4_1());
+    encoders.put(<span class="hljs-string">"scrypt@SpringSecurity_v5_8"</span>, SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8());
+    encoders.put(<span class="hljs-string">"argon2"</span>, Argon2PasswordEncoder.defaultsForSpringSecurity_v5_2());
+    encoders.put(<span class="hljs-string">"argon2@SpringSecurity_v5_8"</span>, Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8());
+    encoders.put(<span class="hljs-string">"sha256"</span>, <span class="hljs-keyword">new</span> StandardPasswordEncoder());
+    
+    PasswordEncoder passwordEncoder =
+        <span class="hljs-keyword">new</span> DelegatingPasswordEncoder(idForEncode, encoders);</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_2_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_2_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-keyword">val</span> idForEncode = <span class="hljs-string">"bcrypt"</span>
+    <span class="hljs-keyword">val</span> encoders: MutableMap&lt;String, PasswordEncoder&gt; = mutableMapOf()
+    encoders[idForEncode] = BCryptPasswordEncoder()
+    encoders[<span class="hljs-string">"noop"</span>] = NoOpPasswordEncoder.getInstance()
+    encoders[<span class="hljs-string">"pbkdf2"</span>] = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_5()
+    encoders[<span class="hljs-string">"pbkdf2@SpringSecurity_v5_8"</span>] = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()
+    encoders[<span class="hljs-string">"scrypt"</span>] = SCryptPasswordEncoder.defaultsForSpringSecurity_v4_1()
+    encoders[<span class="hljs-string">"scrypt@SpringSecurity_v5_8"</span>] = SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8()
+    encoders[<span class="hljs-string">"argon2"</span>] = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_2()
+    encoders[<span class="hljs-string">"argon2@SpringSecurity_v5_8"</span>] = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()
+    encoders[<span class="hljs-string">"sha256"</span>] = StandardPasswordEncoder()
+    
+    <span class="hljs-keyword">val</span> passwordEncoder: PasswordEncoder = DelegatingPasswordEncoder(idForEncode, encoders)</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-dpe-format"><a class="anchor" href="#authentication-password-storage-dpe-format"></a>Password Storage Format</h3>
+    <div class="paragraph">
+    <p>The general format for a password is:</p>
+    </div>
+    <div class="listingblock">
+    <div class="title">DelegatingPasswordEncoder Storage Format</div>
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-text hljs" data-lang="text">{id}encodedPassword</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p><code>id</code> is an identifier that is used to look up which <code>PasswordEncoder</code> should be used and <code>encodedPassword</code> is the original encoded password for the selected <code>PasswordEncoder</code>.
+    The <code>id</code> must be at the beginning of the password, start with <code>{</code>, and end with <code>}</code>.
+    If the <code>id</code> cannot be found, the <code>id</code> is set to null.
+    For example, the following might be a list of passwords encoded using different <code>id</code> values.
+    All of the original passwords are <code>password</code>.</p>
+    </div>
+    <div class="listingblock">
+    <div class="title">DelegatingPasswordEncoder Encoded Passwords Example</div>
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-text hljs" data-lang="text">{bcrypt}$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG <i class="conum" data-value="1"></i><b>(1)</b>
+    {noop}password <i class="conum" data-value="2"></i><b>(2)</b>
+    {pbkdf2}5d923b44a6d129f3ddf3e3c8d29412723dcbde72445e8ef6bf3b508fbf17fa4ed4d6b99ca763d8dc <i class="conum" data-value="3"></i><b>(3)</b>
+    {scrypt}$e0801$8bWJaSu2IKSn9Z9kM+TPXfOc/9bdYSrN1oD9qfVThWEwdRTnO7re7Ei+fUZRJ68k9lTyuTeUp4of4g24hHnazw==$OAOec05+bXxvuu/1qZ6NUR+xQYvYv7BeL1QxwRpY5Pc=  <i class="conum" data-value="4"></i><b>(4)</b>
+    {sha256}97cde38028ad898ebc02e690819fa220e88c62e0699403e94fff291cfffaf8410849f27605abcbc0 <i class="conum" data-value="5"></i><b>(5)</b></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    <div class="colist arabic">
+    <table>
+    <tbody><tr>
+    <td><i class="conum" data-value="1"></i><b>1</b></td>
+    <td>The first password has a <code>PasswordEncoder</code> id of <code>bcrypt</code> and an <code>encodedPassword</code> value of <code>$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</code>.
+    When matching, it would delegate to <code>BCryptPasswordEncoder</code></td>
+    </tr>
+    <tr>
+    <td><i class="conum" data-value="2"></i><b>2</b></td>
+    <td>The second password has a <code>PasswordEncoder</code> id of <code>noop</code> and <code>encodedPassword</code> value of <code>password</code>.
+    When matching, it would delegate to <code>NoOpPasswordEncoder</code></td>
+    </tr>
+    <tr>
+    <td><i class="conum" data-value="3"></i><b>3</b></td>
+    <td>The third password has a <code>PasswordEncoder</code> id of <code>pbkdf2</code> and <code>encodedPassword</code> value of <code>5d923b44a6d129f3ddf3e3c8d29412723dcbde72445e8ef6bf3b508fbf17fa4ed4d6b99ca763d8dc</code>.
+    When matching, it would delegate to <code>Pbkdf2PasswordEncoder</code></td>
+    </tr>
+    <tr>
+    <td><i class="conum" data-value="4"></i><b>4</b></td>
+    <td>The fourth password has a <code>PasswordEncoder</code> id of <code>scrypt</code> and <code>encodedPassword</code> value of <code>$e0801$8bWJaSu2IKSn9Z9kM+TPXfOc/9bdYSrN1oD9qfVThWEwdRTnO7re7Ei+fUZRJ68k9lTyuTeUp4of4g24hHnazw==$OAOec05+bXxvuu/1qZ6NUR+xQYvYv7BeL1QxwRpY5Pc=</code>
+    When matching, it would delegate to <code>SCryptPasswordEncoder</code></td>
+    </tr>
+    <tr>
+    <td><i class="conum" data-value="5"></i><b>5</b></td>
+    <td>The final password has a <code>PasswordEncoder</code> id of <code>sha256</code> and <code>encodedPassword</code> value of <code>97cde38028ad898ebc02e690819fa220e88c62e0699403e94fff291cfffaf8410849f27605abcbc0</code>.
+    When matching, it would delegate to <code>StandardPasswordEncoder</code></td>
+    </tr>
+    </tbody></table>
+    </div>
+    <div class="admonitionblock note">
+    <table>
+    <tbody><tr>
+    <td class="icon">
+    <i class="fa icon-note" title="Note"></i>
+    </td>
+    <td class="content">
+    <div class="paragraph">
+    <p>Some users might be concerned that the storage format is provided for a potential hacker.
+    This is not a concern because the storage of the password does not rely on the algorithm being a secret.
+    Additionally, most formats are easy for an attacker to figure out without the prefix.
+    For example, BCrypt passwords often start with <code>$2a$</code>.</p>
+    </div>
+    </td>
+    </tr>
+    </tbody></table>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-dpe-encoding"><a class="anchor" href="#authentication-password-storage-dpe-encoding"></a>Password Encoding</h3>
+    <div class="paragraph">
+    <p>The <code>idForEncode</code> passed into the constructor determines which <code>PasswordEncoder</code> is used for encoding passwords.
+    In the <code>DelegatingPasswordEncoder</code> we constructed earlier, that means that the result of encoding <code>password</code> is delegated to <code>BCryptPasswordEncoder</code> and be prefixed with <code>{bcrypt}</code>.
+    The end result looks like the following example:</p>
+    </div>
+    <div class="listingblock">
+    <div class="title">DelegatingPasswordEncoder Encode Example</div>
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-text hljs" data-lang="text">{bcrypt}$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-dpe-matching"><a class="anchor" href="#authentication-password-storage-dpe-matching"></a>Password Matching</h3>
+    <div class="paragraph">
+    <p>Matching is based upon the <code>{id}</code> and the mapping of the <code>id</code> to the <code>PasswordEncoder</code> provided in the constructor.
+    Our example in <a href="#authentication-password-storage-dpe-format">Password Storage Format</a> provides a working example of how this is done.
+    By default, the result of invoking <code>matches(CharSequence, String)</code> with a password and an <code>id</code> that is not mapped (including a null id) results in an <code>IllegalArgumentException</code>.
+    This behavior can be customized by using <code>DelegatingPasswordEncoder.setDefaultPasswordEncoderForMatches(PasswordEncoder)</code>.</p>
+    </div>
+    <div class="paragraph">
+    <p>By using the <code>id</code>, we can match on any password encoding but encode passwords by using the most modern password encoding.
+    This is important, because unlike encryption, password hashes are designed so that there is no simple way to recover the plaintext.
+    Since there is no way to recover the plaintext, it is difficult to migrate the passwords.
+    While it is simple for users to migrate <code>NoOpPasswordEncoder</code>, we chose to include it by default to make it simple for the getting-started experience.</p>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-dep-getting-started"><a class="anchor" href="#authentication-password-storage-dep-getting-started"></a>Getting Started Experience</h3>
+    <div class="paragraph">
+    <p>If you are putting together a demo or a sample, it is a bit cumbersome to take time to hash the passwords of your users.
+    There are convenience mechanisms to make this easier, but this is still not intended for production.</p>
+    </div>
+    <div id="_tabs_3" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">withDefaultPasswordEncoder Example</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_3_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_3_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_3_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_3_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_3_java--panel" class="tabpanel" aria-labelledby="_tabs_3_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">UserDetails user = User.withDefaultPasswordEncoder()
+      .username(<span class="hljs-string">"user"</span>)
+      .password(<span class="hljs-string">"password"</span>)
+      .roles(<span class="hljs-string">"user"</span>)
+      .build();
+    System.out.println(user.getPassword());
+    <span class="hljs-comment">// {bcrypt}$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</span></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_3_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_3_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-keyword">val</span> user = User.withDefaultPasswordEncoder()
+        .username(<span class="hljs-string">"user"</span>)
+        .password(<span class="hljs-string">"password"</span>)
+        .roles(<span class="hljs-string">"user"</span>)
+        .build()
+    println(user.password)
+    <span class="hljs-comment">// {bcrypt}$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</span></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>If you are creating multiple users, you can also reuse the builder:</p>
+    </div>
+    <div id="_tabs_4" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">withDefaultPasswordEncoder Reusing the Builder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_4_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_4_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_4_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_4_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_4_java--panel" class="tabpanel" aria-labelledby="_tabs_4_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">UserBuilder users = User.withDefaultPasswordEncoder();
+    UserDetails user = users
+      .username(<span class="hljs-string">"user"</span>)
+      .password(<span class="hljs-string">"password"</span>)
+      .roles(<span class="hljs-string">"USER"</span>)
+      .build();
+    UserDetails admin = users
+      .username(<span class="hljs-string">"admin"</span>)
+      .password(<span class="hljs-string">"password"</span>)
+      .roles(<span class="hljs-string">"USER"</span>,<span class="hljs-string">"ADMIN"</span>)
+      .build();</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_4_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_4_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-keyword">val</span> users = User.withDefaultPasswordEncoder()
+    <span class="hljs-keyword">val</span> user = users
+        .username(<span class="hljs-string">"user"</span>)
+        .password(<span class="hljs-string">"password"</span>)
+        .roles(<span class="hljs-string">"USER"</span>)
+        .build()
+    <span class="hljs-keyword">val</span> admin = users
+        .username(<span class="hljs-string">"admin"</span>)
+        .password(<span class="hljs-string">"password"</span>)
+        .roles(<span class="hljs-string">"USER"</span>, <span class="hljs-string">"ADMIN"</span>)
+        .build()</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>This does hash the password that is stored, but the passwords are still exposed in memory and in the compiled source code.
+    Therefore, it is still not considered secure for a production environment.
+    For production, you should <a href="#authentication-password-storage-boot-cli">hash your passwords externally</a>.</p>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-boot-cli"><a class="anchor" href="#authentication-password-storage-boot-cli"></a>Encode with Spring Boot CLI</h3>
+    <div class="paragraph">
+    <p>The easiest way to properly encode your password is to use the <a href="https://docs.spring.io/spring-boot/docs/current/reference/html/spring-boot-cli.html">Spring Boot CLI</a>.</p>
+    </div>
+    <div class="paragraph">
+    <p>For example, the following example encodes the password of <code>password</code> for use with <a href="#authentication-password-storage-dpe">DelegatingPasswordEncoder</a>:</p>
+    </div>
+    <div class="listingblock">
+    <div class="title">Spring Boot CLI encodepassword Example</div>
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-none hljs">spring encodepassword password
+    {bcrypt}$2a$10$X5wFBtLrL/kHcmrOGGTrGufsBX8CJ0WpQpF3pgeuxBB/H73BK1DW6</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div class="sect2">
+    <h3 id="authentication-password-storage-dpe-troubleshoot"><a class="anchor" href="#authentication-password-storage-dpe-troubleshoot"></a>Troubleshooting</h3>
+    <div class="paragraph">
+    <p>The following error occurs when one of the passwords that are stored has no <code>id</code>, as described in <a href="#authentication-password-storage-dpe-format">Password Storage Format</a>.</p>
+    </div>
+    <div class="listingblock">
+    <div class="content">
+    <pre>java.lang.IllegalArgumentException: There is no PasswordEncoder mapped for the id "null"
+        at org.springframework.security.crypto.password.DelegatingPasswordEncoder$UnmappedIdPasswordEncoder.matches(DelegatingPasswordEncoder.java:233)
+        at org.springframework.security.crypto.password.DelegatingPasswordEncoder.matches(DelegatingPasswordEncoder.java:196)</pre>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>The easiest way to resolve it is to figure out how your passwords are currently being stored and explicitly provide the correct <code>PasswordEncoder</code>.</p>
+    </div>
+    <div class="paragraph">
+    <p>If you are migrating from Spring Security 4.2.x, you can revert to the previous behavior by <a href="#authentication-password-storage-configuration">exposing a <code>NoOpPasswordEncoder</code> bean</a>.</p>
+    </div>
+    <div class="paragraph">
+    <p>Alternatively, you can prefix all of your passwords with the correct <code>id</code> and continue to use <code>DelegatingPasswordEncoder</code>.
+    For example, if you are using BCrypt, you would migrate your password from something like:</p>
+    </div>
+    <div class="listingblock">
+    <div class="content">
+    <pre>$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</pre>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>to</p>
+    </div>
+    <div class="listingblock">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-none hljs">{bcrypt}$2a$10$dXJ3SW6G7P50lGmMkkmwe.20cQQubK3.HZWzG3YB1tlRy.fqvM/BG</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>For a complete listing of the mappings, see the Javadoc for
+    <a href="https://docs.spring.io/spring-security/site/docs/5.0.x/api/org/springframework/security/crypto/factory/PasswordEncoderFactories.html"><code>PasswordEncoderFactories</code></a>.</p>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-bcrypt"><a class="anchor" href="#authentication-password-storage-bcrypt"></a>BCryptPasswordEncoder</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>The <code>BCryptPasswordEncoder</code> implementation uses the widely supported <a href="https://en.wikipedia.org/wiki/Bcrypt" class="external" target="_blank">bcrypt</a> algorithm to hash the passwords.
+    To make it more resistant to password cracking, bcrypt is deliberately slow.
+    Like other adaptive one-way functions, it should be tuned to take about 1 second to verify a password on your system.
+    The default implementation of <code>BCryptPasswordEncoder</code> uses strength 10 as mentioned in the Javadoc of <a href="https://docs.spring.io/spring-security/site/docs/current/api/org/springframework/security/crypto/bcrypt/BCryptPasswordEncoder.html"><code>BCryptPasswordEncoder</code></a>. You are encouraged to
+    tune and test the strength parameter on your own system so that it takes roughly 1 second to verify a password.</p>
+    </div>
+    <div id="_tabs_5" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">BCryptPasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_5_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_5_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_5_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_5_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_5_java--panel" class="tabpanel" aria-labelledby="_tabs_5_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-comment">// Create an encoder with strength 16</span>
+    BCryptPasswordEncoder encoder = <span class="hljs-keyword">new</span> BCryptPasswordEncoder(<span class="hljs-number">16</span>);
+    String result = encoder.encode(<span class="hljs-string">"myPassword"</span>);
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result));</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_5_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_5_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-comment">// Create an encoder with strength 16</span>
+    <span class="hljs-keyword">val</span> encoder = BCryptPasswordEncoder(<span class="hljs-number">16</span>)
+    <span class="hljs-keyword">val</span> result: String = encoder.encode(<span class="hljs-string">"myPassword"</span>)
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result))</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-argon2"><a class="anchor" href="#authentication-password-storage-argon2"></a>Argon2PasswordEncoder</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>The <code>Argon2PasswordEncoder</code> implementation uses the <a href="https://en.wikipedia.org/wiki/Argon2" class="external" target="_blank">Argon2</a> algorithm to hash the passwords.
+    Argon2 is the winner of the <a href="https://en.wikipedia.org/wiki/Password_Hashing_Competition" class="external" target="_blank">Password Hashing Competition</a>.
+    To defeat password cracking on custom hardware, Argon2 is a deliberately slow algorithm that requires large amounts of memory.
+    Like other adaptive one-way functions, it should be tuned to take about 1 second to verify a password on your system.
+    The current implementation of the <code>Argon2PasswordEncoder</code> requires BouncyCastle.</p>
+    </div>
+    <div id="_tabs_6" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">Argon2PasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_6_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_6_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_6_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_6_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_6_java--panel" class="tabpanel" aria-labelledby="_tabs_6_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    Argon2PasswordEncoder encoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8();
+    String result = encoder.encode(<span class="hljs-string">"myPassword"</span>);
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result));</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_6_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_6_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    <span class="hljs-keyword">val</span> encoder = Argon2PasswordEncoder.defaultsForSpringSecurity_v5_8()
+    <span class="hljs-keyword">val</span> result: String = encoder.encode(<span class="hljs-string">"myPassword"</span>)
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result))</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-pbkdf2"><a class="anchor" href="#authentication-password-storage-pbkdf2"></a>Pbkdf2PasswordEncoder</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>The <code>Pbkdf2PasswordEncoder</code> implementation uses the <a href="https://en.wikipedia.org/wiki/PBKDF2" class="external" target="_blank">PBKDF2</a> algorithm to hash the passwords.
+    To defeat password cracking PBKDF2 is a deliberately slow algorithm.
+    Like other adaptive one-way functions, it should be tuned to take about 1 second to verify a password on your system.
+    This algorithm is a good choice when FIPS certification is required.</p>
+    </div>
+    <div id="_tabs_7" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">Pbkdf2PasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_7_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_7_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_7_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_7_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_7_java--panel" class="tabpanel" aria-labelledby="_tabs_7_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    Pbkdf2PasswordEncoder encoder = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8();
+    String result = encoder.encode(<span class="hljs-string">"myPassword"</span>);
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result));</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_7_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_7_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    <span class="hljs-keyword">val</span> encoder = Pbkdf2PasswordEncoder.defaultsForSpringSecurity_v5_8()
+    <span class="hljs-keyword">val</span> result: String = encoder.encode(<span class="hljs-string">"myPassword"</span>)
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result))</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-scrypt"><a class="anchor" href="#authentication-password-storage-scrypt"></a>SCryptPasswordEncoder</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>The <code>SCryptPasswordEncoder</code> implementation uses the <a href="https://en.wikipedia.org/wiki/Scrypt" class="external" target="_blank">scrypt</a> algorithm to hash the passwords.
+    To defeat password cracking on custom hardware, scrypt is a deliberately slow algorithm that requires large amounts of memory.
+    Like other adaptive one-way functions, it should be tuned to take about 1 second to verify a password on your system.</p>
+    </div>
+    <div id="_tabs_8" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">SCryptPasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_8_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_8_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_8_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_8_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_8_java--panel" class="tabpanel" aria-labelledby="_tabs_8_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    SCryptPasswordEncoder encoder = SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8();
+    String result = encoder.encode(<span class="hljs-string">"myPassword"</span>);
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result));</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_8_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_8_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-comment">// Create an encoder with all the defaults</span>
+    <span class="hljs-keyword">val</span> encoder = SCryptPasswordEncoder.defaultsForSpringSecurity_v5_8()
+    <span class="hljs-keyword">val</span> result: String = encoder.encode(<span class="hljs-string">"myPassword"</span>)
+    assertTrue(encoder.matches(<span class="hljs-string">"myPassword"</span>, result))</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-other"><a class="anchor" href="#authentication-password-storage-other"></a>Other <code>PasswordEncoder</code>s</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>There are a significant number of other <code>PasswordEncoder</code> implementations that exist entirely for backward compatibility.
+    They are all deprecated to indicate that they are no longer considered secure.
+    However, there are no plans to remove them, since it is difficult to migrate existing legacy systems.</p>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-password-storage-configuration"><a class="anchor" href="#authentication-password-storage-configuration"></a>Password Storage Configuration</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>Spring Security uses <a href="#authentication-password-storage-dpe">DelegatingPasswordEncoder</a> by default.
+    However, you can customize this by exposing a <code>PasswordEncoder</code> as a Spring bean.</p>
+    </div>
+    <div class="paragraph">
+    <p>If you are migrating from Spring Security 4.2.x, you can revert to the previous behavior by exposing a <code>NoOpPasswordEncoder</code> bean.</p>
+    </div>
+    <div class="admonitionblock warning">
+    <table>
+    <tbody><tr>
+    <td class="icon">
+    <i class="fa icon-warning" title="Warning"></i>
+    </td>
+    <td class="content">
+    <div class="paragraph">
+    <p>Reverting to <code>NoOpPasswordEncoder</code> is not considered to be secure.
+    You should instead migrate to using <code>DelegatingPasswordEncoder</code> to support secure password encoding.</p>
+    </div>
+    </td>
+    </tr>
+    </tbody></table>
+    </div>
+    <div id="_tabs_9" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin|XML">
+    <div class="title">NoOpPasswordEncoder</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_9_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_9_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_9_xml" class="tab" tabindex="-1" role="tab" data-sync-id="XML" aria-controls="_tabs_9_xml--panel">
+    <p>XML</p>
+    </li>
+    <li id="_tabs_9_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_9_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_9_java--panel" class="tabpanel" aria-labelledby="_tabs_9_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> <span class="hljs-keyword">static</span> NoOpPasswordEncoder <span class="hljs-title">passwordEncoder</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> NoOpPasswordEncoder.getInstance();
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_9_xml--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_9_xml" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml"><span class="hljs-tag">&lt;<span class="hljs-name">b:bean</span> <span class="hljs-attr">id</span>=<span class="hljs-string">"passwordEncoder"</span>
+            <span class="hljs-attr">class</span>=<span class="hljs-string">"org.springframework.security.crypto.password.NoOpPasswordEncoder"</span> <span class="hljs-attr">factory-method</span>=<span class="hljs-string">"getInstance"</span>/&gt;</span></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_9_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_9_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">fun</span> <span class="hljs-title">passwordEncoder</span><span class="hljs-params">()</span></span>: PasswordEncoder {
+        <span class="hljs-keyword">return</span> NoOpPasswordEncoder.getInstance();
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="admonitionblock note">
+    <table>
+    <tbody><tr>
+    <td class="icon">
+    <i class="fa icon-note" title="Note"></i>
+    </td>
+    <td class="content">
+    <div class="paragraph">
+    <p>XML Configuration requires the <code>NoOpPasswordEncoder</code> bean name to be <code>passwordEncoder</code>.</p>
+    </div>
+    </td>
+    </tr>
+    </tbody></table>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-change-password-configuration"><a class="anchor" href="#authentication-change-password-configuration"></a>Change Password Configuration</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>Most applications that allow a user to specify a password also require a feature for updating that password.</p>
+    </div>
+    <div class="paragraph">
+    <p><a href="https://w3c.github.io/webappsec-change-password-url/" class="external" target="_blank">A Well-Known URL for Changing Passwords</a> indicates a mechanism by which password managers can discover the password update endpoint for a given application.</p>
+    </div>
+    <div class="paragraph">
+    <p>You can configure Spring Security to provide this discovery endpoint.
+    For example, if the change password endpoint in your application is <code>/change-password</code>, then you can configure Spring Security like so:</p>
+    </div>
+    <div id="_tabs_10" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin|XML">
+    <div class="title">Default Change Password Endpoint</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_10_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_10_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_10_xml" class="tab" tabindex="-1" role="tab" data-sync-id="XML" aria-controls="_tabs_10_xml--panel">
+    <p>XML</p>
+    </li>
+    <li id="_tabs_10_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_10_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_10_java--panel" class="tabpanel" aria-labelledby="_tabs_10_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">http
+        .passwordManagement(Customizer.withDefaults())</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_10_xml--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_10_xml" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml"><span class="hljs-tag">&lt;<span class="hljs-name">sec:password-management</span>/&gt;</span></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_10_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_10_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">http {
+        passwordManagement { }
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>Then, when a password manager navigates to <code>/.well-known/change-password</code> then Spring Security will redirect your endpoint, <code>/change-password</code>.</p>
+    </div>
+    <div class="paragraph">
+    <p>Or, if your endpoint is something other than <code>/change-password</code>, you can also specify that like so:</p>
+    </div>
+    <div id="_tabs_11" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin|XML">
+    <div class="title">Change Password Endpoint</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_11_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_11_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_11_xml" class="tab" tabindex="-1" role="tab" data-sync-id="XML" aria-controls="_tabs_11_xml--panel">
+    <p>XML</p>
+    </li>
+    <li id="_tabs_11_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_11_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_11_java--panel" class="tabpanel" aria-labelledby="_tabs_11_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java">http
+        .passwordManagement((management) -&gt; management
+            .changePasswordPage(<span class="hljs-string">"/update-password"</span>)
+        )</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_11_xml--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_11_xml" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-xml hljs" data-lang="xml"><span class="hljs-tag">&lt;<span class="hljs-name">sec:password-management</span> <span class="hljs-attr">change-password-page</span>=<span class="hljs-string">"/update-password"</span>/&gt;</span></code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_11_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_11_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin">http {
+        passwordManagement {
+            changePasswordPage = <span class="hljs-string">"/update-password"</span>
+        }
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>With the above configuration, when a password manager navigates to <code>/.well-known/change-password</code>, then Spring Security will redirect to <code>/update-password</code>.</p>
+    </div>
+    </div>
+    </div>
+    <div class="sect1">
+    <h2 id="authentication-compromised-password-check"><a class="anchor" href="#authentication-compromised-password-check"></a>Compromised Password Checking</h2>
+    <div class="sectionbody">
+    <div class="paragraph">
+    <p>There are some scenarios where you need to check whether a password has been compromised, for example, if you are creating an application that deals with sensitive data, it is often needed that you perform some check on user’s passwords in order to assert its reliability.
+    One of these checks can be if the password has been compromised, usually because it has been found in a <a href="https://wikipedia.org/wiki/Data_breach" class="external" target="_blank">data breach</a>.</p>
+    </div>
+    <div class="paragraph">
+    <p>To facilitate that, Spring Security provides integration with the <a href="https://haveibeenpwned.com/API/v3#PwnedPasswords" class="external" target="_blank">Have I Been Pwned API</a> via the <a href="https://docs.spring.io/spring-security/site/docs/6.3.1/api/org/springframework/security/core/password/HaveIBeenPwnedRestApiPasswordChecker.html"><code>HaveIBeenPwnedRestApiPasswordChecker</code> implementation</a> of the <a href="https://docs.spring.io/spring-security/site/docs/6.3.1/api/org/springframework/security/core/password/CompromisedPasswordChecker.html"><code>CompromisedPasswordChecker</code> interface</a>.</p>
+    </div>
+    <div class="paragraph">
+    <p>You can either use the <code>CompromisedPasswordChecker</code> API by yourself or, if you are using <a href="../../servlet/authentication/passwords/dao-authentication-provider.html" class="xref page">the <code>DaoAuthenticationProvider</code></a> via <a href="../../servlet/authentication/passwords/index.html" class="xref page">Spring Security authentication mechanisms</a>, you can provide a <code>CompromisedPasswordChecker</code> bean, and it will be automatically picked up by Spring Security configuration.</p>
+    </div>
+    <div id="_tabs_12" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="title">Using CompromisedPasswordChecker as a bean</div>
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_12_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_12_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_12_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_12_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_12_java--panel" class="tabpanel" aria-labelledby="_tabs_12_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> SecurityFilterChain <span class="hljs-title">filterChain</span><span class="hljs-params">(HttpSecurity http)</span> <span class="hljs-keyword">throws</span> Exception </span>{
+        http
+            .authorizeHttpRequests(authorize -&gt; authorize
+                .anyRequest().authenticated()
+            )
+            .formLogin(withDefaults())
+            .httpBasic(withDefaults());
+        <span class="hljs-keyword">return</span> http.build();
+    }
+    
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-function"><span class="hljs-keyword">public</span> CompromisedPasswordChecker <span class="hljs-title">compromisedPasswordChecker</span><span class="hljs-params">()</span> </span>{
+        <span class="hljs-keyword">return</span> <span class="hljs-keyword">new</span> HaveIBeenPwnedRestApiPasswordChecker();
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_12_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_12_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-meta">@Bean</span>
+    <span class="hljs-keyword">open</span> <span class="hljs-function"><span class="hljs-keyword">fun</span> <span class="hljs-title">filterChain</span><span class="hljs-params">(http:<span class="hljs-type">HttpSecurity</span>)</span></span>: SecurityFilterChain {
+        http {
+            authorizeHttpRequests {
+                authorize(anyRequest, authenticated)
+            }
+            formLogin {}
+            httpBasic {}
+        }
+        <span class="hljs-keyword">return</span> http.build()
+    }
+    
+    <span class="hljs-meta">@Bean</span>
+    <span class="hljs-keyword">open</span> <span class="hljs-function"><span class="hljs-keyword">fun</span> <span class="hljs-title">compromisedPasswordChecker</span><span class="hljs-params">()</span></span>: CompromisedPasswordChecker {
+        <span class="hljs-keyword">return</span> HaveIBeenPwnedRestApiPasswordChecker()
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    <div class="paragraph">
+    <p>By doing that, when you try to authenticate via HTTP Basic or Form Login using a weak password, let’s say <code>123456</code>, you will receive a 401 response status code.
+    However, just a 401 is not so useful in that case, it will cause some confusion because the user provided the right password and still was not allowed to log in.
+    In such cases, you can handle the <code>CompromisedPasswordException</code> to perform your desired logic, like redirecting the user-agent to <code>/reset-password</code>, for example:</p>
+    </div>
+    <div id="_tabs_13" class="openblock tabs is-sync is-loaded" data-sync-group-id="Java|Kotlin">
+    <div class="content">
+    <div class="ulist tablist">
+    <ul role="tablist">
+    <li id="_tabs_13_java" class="tab is-selected" tabindex="0" role="tab" data-sync-id="Java" aria-controls="_tabs_13_java--panel" aria-selected="true">
+    <p>Java</p>
+    </li>
+    <li id="_tabs_13_kotlin" class="tab" tabindex="-1" role="tab" data-sync-id="Kotlin" aria-controls="_tabs_13_kotlin--panel">
+    <p>Kotlin</p>
+    </li>
+    </ul>
+    </div>
+    <div id="_tabs_13_java--panel" class="tabpanel" aria-labelledby="_tabs_13_java" role="tabpanel">
+    <div class="listingblock primary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-java hljs" data-lang="java"><span class="hljs-meta">@ControllerAdvice</span>
+    <span class="hljs-keyword">public</span> <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyControllerAdvice</span> </span>{
+    
+        <span class="hljs-meta">@ExceptionHandler</span>(CompromisedPasswordException<span class="hljs-class">.<span class="hljs-keyword">class</span>)
+        <span class="hljs-title">public</span> <span class="hljs-title">String</span> <span class="hljs-title">handleCompromisedPasswordException</span>(<span class="hljs-title">CompromisedPasswordException</span> <span class="hljs-title">ex</span>, <span class="hljs-title">RedirectAttributes</span> <span class="hljs-title">attributes</span>) </span>{
+            attributes.addFlashAttribute(<span class="hljs-string">"error"</span>, ex.message);
+            <span class="hljs-keyword">return</span> <span class="hljs-string">"redirect:/reset-password"</span>;
+        }
+    
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    <div id="_tabs_13_kotlin--panel" class="tabpanel is-hidden" aria-labelledby="_tabs_13_kotlin" hidden="" role="tabpanel">
+    <div class="listingblock secondary">
+    <div class="content">
+    <pre class="highlightjs highlight"><code class="language-kotlin hljs" data-lang="kotlin"><span class="hljs-meta">@ControllerAdvice</span>
+    <span class="hljs-class"><span class="hljs-keyword">class</span> <span class="hljs-title">MyControllerAdvice</span> </span>{
+    
+        <span class="hljs-meta">@ExceptionHandler(CompromisedPasswordException::class)</span>
+        <span class="hljs-function"><span class="hljs-keyword">fun</span> <span class="hljs-title">handleCompromisedPasswordException</span><span class="hljs-params">(ex: <span class="hljs-type">CompromisedPasswordException</span>, attributes: <span class="hljs-type">RedirectAttributes</span>)</span></span>: RedirectView {
+            attributes.addFlashAttribute(<span class="hljs-string">"error"</span>, ex.message)
+            <span class="hljs-keyword">return</span> RedirectView(<span class="hljs-string">"/reset-password"</span>)
+        }
+    
+    }</code><div class="source-toolbox"><button class="copy-button" title="Copy to clipboard"><span class="copy-toast">Copied!</span></button></div></pre>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </div>
+    </article>
