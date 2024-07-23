@@ -19,6 +19,7 @@ public class Contribuicao {
     private long id;
     private String nome;
     private LocalDate data;
+    private boolean confirmada = false; // Definindo valor padrão
 
     @ManyToOne
     @JoinColumn(name = "colaborador_id")
@@ -26,14 +27,18 @@ public class Contribuicao {
 
     // Construtores, getters e setters
 
-    public Contribuicao() {}
+    public Contribuicao() {
+    }
 
-    public Contribuicao(long id, String nome, LocalDate data, Colaborador colaborador) {
+    public Contribuicao(long id, String nome, LocalDate data, Colaborador colaborador, boolean confirmada) {
         this.id = id;
         this.nome = nome;
         this.data = data;
         this.colaborador = colaborador;
+        this.confirmada = confirmada;
     }
+
+    // Getters e setters...
 
     public long getId() {
         return id;
@@ -57,6 +62,14 @@ public class Contribuicao {
 
     public void setData(LocalDate data) {
         this.data = data;
+    }
+
+    public boolean isConfirmada() {
+        return confirmada;
+    }
+
+    public void setConfirmada(boolean confirmada) {
+        this.confirmada = confirmada;
     }
 
     public Colaborador getColaborador() {

@@ -58,7 +58,7 @@
 
         <div th:if="${errorMessage}" class="error-message" th:text="${errorMessage}"></div>
 
-        <form th:action="@{/calendar/day/{day}/contribute(day=${day})}" method="post" onsubmit="return validateForm()">
+        <form th:action="@{/contribuicoes/adicionar/{day}(day=${day})}" method="post" onsubmit="return validateForm()">
             <div class="input-group">
                 <label for="nome">Nome da Contribuição</label>
                 <input type="text" id="nome" name="nome" placeholder="Digite o nome da contribuição" required>
@@ -67,6 +67,7 @@
                 <input type="submit" value="Contribuir">
             </div>
         </form>
+        
     </div>
 
     <script>
