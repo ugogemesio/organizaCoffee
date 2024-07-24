@@ -2,10 +2,11 @@
 <html xmlns:th="http://www.thymeleaf.org">
 <head>
     <meta charset="UTF-8">
-    <title>Detalhes do Dia</title>
+    <title>Minhas Contribuições</title>
     <style>
         body {
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
             height: 100vh;
@@ -13,17 +14,15 @@
             background-color: #f0f0f0;
             font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
         }
-        .day-card {
+        .contributions-card {
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
             padding: 20px;
             width: 80%;
             max-width: 500px;
-            max-height: 90vh; /* Define a altura máxima */
             box-sizing: border-box;
             text-align: center;
-            overflow-y: auto; /* Adiciona barra de rolagem vertical quando necessário */
         }
         .input-group {
             margin: 15px 0;
@@ -37,31 +36,35 @@
             border-radius: 4px;
             margin-bottom: 10px;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            position: relative;
         }
-        .error-message {
-            color: red;
-            margin-bottom: 15px;
+        .buttons {
+            margin-top: 10px;
+        }
+        .buttons button {
+            margin: 5px;
         }
     </style>
 </head>
 <body>
-    <div class="day-card">
-        <h2 id="day-heading">Detalhes do Dia</h2>
+    <div class="contributions-card">
+        <h2>Minhas Contribuições</h2>
         
         <div class="contributions-list">
             <h3>Contribuições</h3>
             <div th:each="contribuicao : ${contribuicoes}" class="contribution-item">
                 <p><strong th:text="${contribuicao.nome}">Nome da Contribuição</strong></p>
-                <p>Nome do Colaborador: <span th:text="${contribuicao.colaborador.nome}">nome</span></p>
-                <p>CPF: <span th:text="${contribuicao.colaborador.cpf}">cpf</span></p>
+                <p>Data: <span th:text="${contribuicao.data}">data</span></p>
                 <p>Contribuição: <span th:text="${contribuicao.nome}">contribuicao</span></p>
                 
+                <div class="buttons">
+                    <button onclick="confirmDelete('${contribuicao.id}')">Deletar</button>
+                    <button onclick="showUpdateForm('${contribuicao.id}', '${contribuicao.nome}')">Atualizar</button>
+                </div>
             </div>
         </div>
 
-        <div th:if="${errorMessage}" class="error-message" th:text="${errorMessage}"></div>
-
-        <form th:action="@{/contribuicoes/adicionar/{day}(day=${day})}" method="post" onsubmit="return validateForm()">
+        <form th:action="@{/contribuicoes/adicionar}" method="post" onsubmit="return validateForm()">
             <div class="input-group">
                 <label for="nome">Nome da Contribuição</label>
                 <input type="text" id="nome" name="nome" placeholder="Digite o nome da contribuição" required>
@@ -70,19 +73,24 @@
                 <input type="submit" value="Contribuir">
             </div>
         </form>
-        
+
+        <!-- Formulário para atualizar contribuição -->
+        <div id="update-form" style="display: none;">
+            <h3>Atualizar Contribuição</h3>
+            <form th:action="@{/contribuicoes/atualizar}" method="post">
+                <input type="hidden" id="update-id" name="id">
+                <div class="input-group">
+                    <label for="update-nome">Novo Nome da Contribuição</label>
+                    <input type="text" id="update-nome" name="nome" required>
+                </div>
+                <div class="input-group">
+                    <input type="submit" value="Atualizar">
+                </div>
+            </form>
+        </div>
     </div>
 
     <script>
-      document.addEventListener('DOMContentLoaded', function() {
-            const dayHeading = document.getElementById('day-heading');
-            const dayValue = dayHeading.getAttribute('data-day'); // Obter a data do atributo de dados
-            const date = new Date();
-            const options = { day: 'numeric', month: 'short' };
-            const formattedDate = date.toLocaleDateString('pt-BR', options);
-
-            dayHeading.textContent = formattedDate;
-        });
         function validateForm() {
             const nome = document.getElementById('nome').value;
             if (nome.trim() === '') {
@@ -90,6 +98,18 @@
                 return false;
             }
             return true;
+        }
+
+        function confirmDelete(id) {
+            if (confirm('Você tem certeza que deseja deletar esta contribuição?')) {
+                window.location.href = '/contribuicoes/deletar/' + id;
+            }
+        }
+
+        function showUpdateForm(id, nome) {
+            document.getElementById('update-id').value = id;
+            document.getElementById('update-nome').value = nome;
+            document.getElementById('update-form').style.display = 'block';
         }
     </script>
 </body>

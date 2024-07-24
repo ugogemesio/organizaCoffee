@@ -14,11 +14,12 @@ body {
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
     padding: 20px;
     width: 100%;
-    max-width: 400px;
+    min-width: 500px;
+    max-width: 600px;
     box-sizing: border-box;
 }
 
-.login-card h2, .register-card h2 {
+.login-card h2, .register-card h2{
     margin-top: 0;
     text-align: center;
     color: #333;
@@ -42,7 +43,7 @@ body {
     box-sizing: border-box;
 }
 
-.login-card .input-group input[type="submit"], .register-card .input-group input[type="submit"] {
+.login-card .input-group input[type="submit"], .register-card .input-group input[type="submit"],button {
     background-color: #007bff;
     color: white;
     border: none;

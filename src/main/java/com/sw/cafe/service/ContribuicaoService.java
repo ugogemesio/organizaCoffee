@@ -2,13 +2,13 @@ package com.sw.cafe.service;
 
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
-import com.sw.cafe.controller.CalendarioController;
 import com.sw.cafe.model.Contribuicao;
 import com.sw.cafe.repository.ContribuicaoRepository;
 
@@ -26,6 +26,14 @@ public class ContribuicaoService {
 
     public List<Contribuicao> findByDataAndColaboradorId(LocalDate data, Long colaboradorId) {
         return contribuicaoRepository.findByDataAndColaboradorId(data, colaboradorId);
+    }
+
+    public List<Contribuicao> findByColaboradorCpf(String cpf) {
+        return contribuicaoRepository.findByColaboradorCpf(cpf);
+    }
+
+    public void deleteContribuicaoById(Long id) {
+        contribuicaoRepository.deleteContribuicaoById(id);
     }
 
     public void addContribuicao(Contribuicao contribuicao) {
@@ -48,5 +56,9 @@ public class ContribuicaoService {
 
     public void save(Contribuicao contribuicao) {
         contribuicaoRepository.save(contribuicao);
+    }
+
+    public void deleteById(Long id) {
+        contribuicaoRepository.deleteById(id);
     }
 }
