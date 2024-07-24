@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -31,20 +32,21 @@
         }
     </script>
 </head>
+
 <body>
-    <div class="register-card">
+    <div class="card register-card">
         <h2>Registro</h2>
         <form id="registerForm" onsubmit="handleSubmit(event)" action="/colaborador">
             <div class="input-group">
                 <label for="nome">Nome</label>
                 <input type="text" id="nome" name="nome" placeholder="Digite seu nome" required>
             </div>
-            
+
             <div class="input-group">
                 <label for="cpf">CPF</label>
                 <input type="text" id="cpf" name="cpf" placeholder="Digite seu CPF" required>
             </div>
-            
+
             <div class="input-group">
                 <label for="senha">Senha</label>
                 <input type="password" id="senha" name="senha" placeholder="Digite sua senha" required>
@@ -53,10 +55,11 @@
             <div class="input-group">
                 <input type="submit" value="Registrar">
             </div>
-            <div class="input-group">
-                <button type="button" onclick="window.location.href='/login'">Login</button>
-            </div>
         </form>
+        <div class="input-group">
+            <button type="button" onclick="window.location.href='/login'">Login</button>
+        </div>
     </div>
 </body>
+
 </html>

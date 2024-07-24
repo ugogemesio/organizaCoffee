@@ -134,6 +134,8 @@
 
 <body>
     <div class="calendar-card">
+        <button onclick="location.href='/minhas-contribuicoes'">LISTA DE CONTRIBUIÇÕES</button>
+
         <div class="navigation-buttons">
             <button onclick="navigateMonth(-1)">&#8592; Anterior</button>
             <h2 id="currentMonth" th:text="${currentMonth}"></h2>
@@ -217,25 +219,24 @@
             sessionStorage.setItem('modalShown', 'true');
         }
 
-        function updateContribuicaoStatus(contribuicaoId, status) {
-        fetch('/contribuicoes/atualizar/' + contribuicaoId + '/' + status, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            }
-        })
-        .then(response => {
-            if (response.ok) {
-                // Atualizar a interface do modal sem fechar
-                const contribuicaoDiv = document.querySelector(`[onclick='updateContribuicaoStatus(${contribuicaoId}, true)']`).parentNode;
-                if (contribuicaoDiv) {
-                    contribuicaoDiv.remove();
+        function updateContribuicaoStatus(id, confirmada) {
+            fetch('/contribuicoes/atualizar', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded'
+                },
+                body: new URLSearchParams({
+                    id: id,
+                    confirmada: confirmada
+                })
+            }).then(response => {
+                if (response.ok) {
+                    location.reload();
+                } else {
+                    alert('Erro ao atualizar a contribuição.');
                 }
-            } else {
-                alert('Erro ao atualizar status da contribuição');
-            }
-        });
-    }
+            });
+        }
 
         document.addEventListener("DOMContentLoaded", function () {
             var today = new Date().toISOString().split('T')[0];
@@ -255,8 +256,6 @@
                 fetchContribuicoesHoje();
             }
         });
-
-
     </script>
 </body>
 

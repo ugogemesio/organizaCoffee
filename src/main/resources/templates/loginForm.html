@@ -1,15 +1,17 @@
 <!DOCTYPE html>
 <html xmlns:th="http://www.thymeleaf.org">
 <html lang="pt-BR">
+
 <head>
     <meta charset="UTF-8">
     <title>Login</title>
     <link rel="stylesheet" href="/css/styles.css">
 </head>
+
 <body>
-    <div class="login-card">
+    <div class="card login-card">
         <h2>Login</h2>
-        <form id="loginForm" method="post" action="/login">
+        <form id="loginForm" onsubmit="handleSubmit(event)" method="post" action="/login">
             <div class="input-group">
                 <label for="cpf">CPF:</label>
                 <input type="text" id="cpf" name="username">
@@ -24,10 +26,13 @@
             <div class="input-group">
                 <input type="submit" value="Login">
             </div>
-            <div class="input-group">
-                <button type="button" onclick="window.location.href='/register'">Registrar</button>
-            </div>
+
         </form>
+        <div class="input-group">
+            <button type="button" onclick="window.location.href='/register'">Registrar</button>
+        </div>
     </div>
+    
 </body>
+
 </html>

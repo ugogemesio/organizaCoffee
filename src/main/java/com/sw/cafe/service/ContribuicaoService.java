@@ -2,7 +2,6 @@ package com.sw.cafe.service;
 
 import java.time.LocalDate;
 import java.util.List;
-import java.util.Optional;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +14,7 @@ import com.sw.cafe.repository.ContribuicaoRepository;
 @Service
 public class ContribuicaoService {
 
-    private static final Logger logger = LoggerFactory.getLogger(Contribuicao.class);
+    private static final Logger logger = LoggerFactory.getLogger(ContribuicaoService.class);
 
     @Autowired
     private ContribuicaoRepository contribuicaoRepository;
@@ -30,6 +29,10 @@ public class ContribuicaoService {
 
     public List<Contribuicao> findByColaboradorCpf(String cpf) {
         return contribuicaoRepository.findByColaboradorCpf(cpf);
+    }
+
+    public List<Contribuicao> findByColabId(Long colabId){
+        return contribuicaoRepository.findByColadboradorId(colabId);
     }
 
     public void deleteContribuicaoById(Long id) {
@@ -50,6 +53,10 @@ public class ContribuicaoService {
         logger.info("Contribuição salva com sucesso: {}", contribuicao);
     }
 
+    public void confirmaContribuicao(Long id, boolean confirmada) {
+        contribuicaoRepository.updateContribuicao(id, confirmada);
+    }
+    
     public Contribuicao findById(Long id) {
         return contribuicaoRepository.findById(id).orElse(null);
     }
@@ -58,7 +65,5 @@ public class ContribuicaoService {
         contribuicaoRepository.save(contribuicao);
     }
 
-    public void deleteById(Long id) {
-        contribuicaoRepository.deleteById(id);
-    }
+
 }

@@ -1,15 +1,19 @@
 package com.sw.cafe.controller;
 
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -21,6 +25,12 @@ import com.sw.cafe.model.Colaborador;
 import com.sw.cafe.model.Contribuicao;
 import com.sw.cafe.service.ColaboradorService;
 import com.sw.cafe.service.ContribuicaoService;
+
+import jakarta.servlet.http.HttpServletResponse;
+
+import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestMethod;
 
 @Controller
 public class ContribuicaoController {
@@ -39,15 +49,26 @@ public class ContribuicaoController {
     public String minhasContribuicoes(Model model) {
         Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
         String cpf = authentication.getName(); // Assuming the CPF is the username
-        List<Contribuicao> contribuicoes = contribuicaoService.findByColaboradorCpf(cpf);
+        Colaborador a = colaboradorService.achaPorCpf(cpf);
+
+        List<Contribuicao> contribuicoes = contribuicaoService.findByColabId(a.getId());
         model.addAttribute("contribuicoes", contribuicoes);
         return "minhasContribuicoes";
     }
 
-    @GetMapping("/contribuicoes/deletar/{id}")
-    public String deletarContribuicao(@PathVariable Long id) {
-        contribuicaoService.deleteContribuicaoById(id);
-        return "redirect:/minhas-contribuicoes";
+    @PostMapping("/contribuicoes/deletar/{id}")
+    public void deletarContribuicao(@PathVariable("id") long id, HttpServletResponse response) {
+        System.out.println(id);
+        try {
+            contribuicaoService.deleteContribuicaoById(id);
+            response.sendRedirect("/minhas-contribuicoes");
+        } catch (Exception e) {
+            try {
+                response.sendRedirect("/error"); // Redirecionar para uma página de erro, se necessário
+            } catch (IOException ex) {
+                ex.printStackTrace();
+            }
+        }
     }
 
     @PostMapping("/contribuicoes/adicionar/{day}")
@@ -81,36 +102,14 @@ public class ContribuicaoController {
     }
 
     @PostMapping("/contribuicoes/atualizar")
-    public String updateContribuicao(@RequestParam("id") Long id, @RequestParam("nome") String nome, @RequestParam("day") String day,
-            RedirectAttributes redirectAttributes, Authentication authentication) {
-        String cpf = authentication.getName();
-        Contribuicao contribuicao = contribuicaoService.findById(id);
-        if (contribuicao == null || !contribuicao.getColaborador().getCpf().equals(cpf)) {
-            logger.error("Contribuição não encontrada ou usuário não autorizado");
-            redirectAttributes.addFlashAttribute("errorMessage", "Contribuição não encontrada ou usuário não autorizado");
-            return "redirect:/calendar/day/" + day;
+    public ResponseEntity<String> updateContribuicao(@RequestParam("id") Long id,
+            @RequestParam("confirmada") boolean confirmada) {
+        try {
+            contribuicaoService.confirmaContribuicao(id, confirmada);
+            return ResponseEntity.ok("Contribuição atualizada com sucesso.");
+        } catch (Exception e) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body("Erro ao atualizar a contribuição.");
         }
-
-        contribuicao.setNome(nome);
-        contribuicaoService.save(contribuicao);
-        logger.info("Contribuição atualizada com sucesso");
-        return "redirect:/calendar/day/" + day;
-    }
-
-    @GetMapping("/contribuicoes/deletar/{id}/{day}")
-    public String deleteContribuicao(@PathVariable("id") Long id, @PathVariable("day") String day,
-            RedirectAttributes redirectAttributes, Authentication authentication) {
-        String cpf = authentication.getName();
-        Contribuicao contribuicao = contribuicaoService.findById(id);
-        if (contribuicao == null || !contribuicao.getColaborador().getCpf().equals(cpf)) {
-            logger.error("Contribuição não encontrada ou usuário não autorizado");
-            redirectAttributes.addFlashAttribute("errorMessage", "Contribuição não encontrada ou usuário não autorizado");
-            return "redirect:/calendar/day/" + day;
-        }
-
-        contribuicaoService.deleteById(id);
-        logger.info("Contribuição deletada com sucesso");
-        return "redirect:/calendar/day/" + day;
     }
 
     @ExceptionHandler(Exception.class)

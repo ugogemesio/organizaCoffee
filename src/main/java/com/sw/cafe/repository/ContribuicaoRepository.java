@@ -32,25 +32,22 @@ public interface ContribuicaoRepository extends CrudRepository<Contribuicao, Lon
     @Query(value = "SELECT * FROM contribuicao WHERE id = :id", nativeQuery = true)
     Optional<Contribuicao> findById(@Param("id") Long id);
 
-    @Query(value = "DELETE FROM contribuicao WHERE id = :id", nativeQuery = true)
-    void deleteById(@Param("id") Long id);
-
-    @Modifying
     @Transactional
-    @Query(value = "INSERT INTO contribuicao (nome, data, confirmada, colaborador_id) VALUES (:nome, :data, :confirmada, :colaborador_id)", nativeQuery = true)
-    void saveContribuicao(@Param("nome") String nome, @Param("data") LocalDate data,
-            @Param("confirmada") boolean confirmada, @Param("colaborador_id") Long colaboradorId);
-
-    @Query(value = "UPDATE contribuicao SET nome = :nome, data = :data, confirmada = :confirmada, colaborador_id = :colaborador_id WHERE id = :id", nativeQuery = true)
-    void updateContribuicao(@Param("id") Long id, @Param("nome") String nome, @Param("data") LocalDate data,
-            @Param("confirmada") boolean confirmada, @Param("colaborador_id") Long colaboradorId);
+    @Modifying
+    @Query(value = "UPDATE contribuicao SET confirmada = :confirmada WHERE id = :id", nativeQuery = true)
+    void updateContribuicao(@Param("id") Long id, @Param("confirmada") boolean confirmada);
 
     @Query(value = "SELECT * FROM contribuicao WHERE colaborador_cpf = :cpf", nativeQuery = true)
-    List<Contribuicao> findByColaboradorCpf(String cpf);
+    List<Contribuicao> findByColaboradorCpf(@Param("cpf") String cpf);
 
     @Transactional
     @Modifying
-    @Query(value = "DELETE FROM contribuicao WHERE id = :id", nativeQuery = true)
-    void deleteContribuicaoById(Long id);
+    @Query(value = "DELETE  FROM contribuicao WHERE id = :id", nativeQuery = true)
+    void deleteContribuicaoById(@Param("id") Long id);
+
+    @Transactional
+    @Modifying
+    @Query(value = "SELECT * FROM contribuicao WHERE colaborador_id = :id", nativeQuery = true)
+    List<Contribuicao>  findByColadboradorId(@Param("id") Long id);
 
 }
